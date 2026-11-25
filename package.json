@@ -11,7 +11,7 @@
   "version": "2.7.1",
   "license": "MIT",
   "engines": {
-    "node": ">=6"
+    "node": ">=18"
   },
   "directories": {
     "lib": "./lib/coffeescript"

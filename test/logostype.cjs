@@ -37,3 +37,12 @@ test('diagnoses missing types, misplaced directives and export conflicts', () =>
  assert.throws(()=>run('tool x = (): number ->\n  1\n  @interval 20'), /directives must precede/);
  assert.throws(()=>run('tool x = (): number -> 1\nexports.x = -> 2'), /conflicting export/);
 });
+test('union signatures and async void exports retain their contracts', async () => {
+ const r = run('sample choose = (value: ("a"|"b")): ("a"|"b") -> value\n\ntask finish = (): void ->\n  await Promise.resolve 42\n');
+ assert.match(r.docs.choose, /@returns \{\("a"\|"b"\)\}/);
+ assert.equal(r.exports.choose('a'),'a');
+ assert.equal(await r.exports.finish(),undefined);
+});
+test('directives after literal statements are rejected', () => {
+ assert.throws(()=>run('sample x = (): string ->\n  "value"\n  @description "late"\n'),/directives must precede/);
+});
