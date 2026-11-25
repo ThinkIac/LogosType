@@ -1,6 +1,6 @@
 {
-  "name": "coffeescript",
-  "description": "Unfancy JavaScript",
+  "name": "logostype",
+  "description": "L\u00f3gosType: declarative typed resources built on CoffeeScript 2",
   "keywords": [
     "javascript",
     "language",
@@ -16,7 +16,7 @@
   "directories": {
     "lib": "./lib/coffeescript"
   },
-  "main": "./lib/coffeescript/index",
+  "main": "./lib/logostype/index.js",
   "module": "./lib/coffeescript-browser-compiler-modern/coffeescript.js",
   "browser": "./lib/coffeescript-browser-compiler-legacy/coffeescript.js",
   "bin": {
@@ -27,17 +27,19 @@
     "bin",
     "lib",
     "register.js",
-    "repl.js"
+    "repl.js",
+    "COFFEESCRIPT.md"
   ],
   "scripts": {
     "test": "node ./bin/cake test",
-    "test-harmony": "node --harmony ./bin/cake test"
+    "test-harmony": "node --harmony ./bin/cake test",
+    "test:logostype": "node --test test/logostype.cjs"
   },
-  "homepage": "https://coffeescript.org",
-  "bugs": "https://github.com/jashkenas/coffeescript/issues",
+  "homepage": "https://github.com/ThinkIac/LogosType",
+  "bugs": "https://github.com/ThinkIac/LogosType/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jashkenas/coffeescript.git"
+    "url": "git+https://github.com/ThinkIac/LogosType.git"
   },
   "devDependencies": {
     "@babel/core": "~7.17.9",
