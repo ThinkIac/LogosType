@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         operating-system: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [16.x, 18.x, 20.x, 22.x, 24.x, 26.x]
+        node-version: [18.x, 20.x, 22.x, 24.x, 26.x]
 
     steps:
     - uses: actions/checkout@v3
@@ -37,7 +37,8 @@ jobs:
     # Check that the git diff is clean, to ensure that the updated build output was committed
     - run: git diff --exit-code
 
-    # Test
+    # Test both the resource language and upstream CoffeeScript.
+    - run: npm run test:logostype
     - run: node ./bin/cake test
     - run: node ./bin/cake test:browser || node ./bin/cake test:browser || node ./bin/cake test:browser
     - run: node ./bin/cake test:browser:node
