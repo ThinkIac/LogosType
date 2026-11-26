@@ -4806,6 +4806,7 @@ exports.Op = class Op extends Base
   compileContinuation: (o) ->
     parts = []
     op = @operator
+    o.inspectAwait?(@first, o.scope) if @isAwait()
     @checkContinuation o unless @isAwait()
     if 'expression' in Object.keys(@first) and not (@first instanceof Throw)
       parts.push @first.expression.compileToFragments o, LEVEL_OP if @first.expression?

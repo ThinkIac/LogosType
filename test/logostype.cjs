@@ -225,3 +225,24 @@ test('schema diagnostics identify unsupported files, conflicts and missing refer
   assert.throws(() => compile('Missing.ID'), { code: 'LOGOS_SCHEMA_MODEL_NOT_FOUND', message: /user.type:1.*Missing/ });
   assert.throws(() => compile('User.missing'), { code: 'LOGOS_SCHEMA_FIELD_NOT_FOUND' });
 });
+
+test('awaited schema index preserves CoffeeScript scope and describes the result', async () => {
+  const models = [{ name: 'User', primaryKey: { fields: ['slug'] }, fields: [{ name: 'slug', type: 'String' }] }];
+  const source = `exports.read = (id) -> await User[id]
+exports.local = (User) -> await User[1]
+exports.later = ->
+  f = -> await User[1]
+  User = ['zero', 'local']
+  f()
+`;
+  const compiled = language.compileResource(source, { primaryKeyModels: models });
+  const exports = {};
+  const User = { __logosReadPrimaryKey: async slug => ({ slug }) };
+  new Function('exports', 'User', compiled.js)(exports, User);
+  assert.deepEqual(await exports.read('ana'), { slug: 'ana' });
+  assert.equal(await exports.local(['zero', 'parameter']), 'parameter');
+  assert.equal(await exports.later(), 'local');
+  assert.deepEqual(compiled.primaryKeyReads, [{ model: 'User', returns: 'User | null' }]);
+  assert.throws(() => language.compileResource('f = -> await User[42]', { primaryKeyModels: models }),
+    { code: 'SCRIBA_INVALID_KEY' });
+});
