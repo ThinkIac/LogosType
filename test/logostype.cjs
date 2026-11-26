@@ -109,3 +109,63 @@ test('links local resource calls across files and diagnoses missing resources', 
   assert.throws(() => language.compileCatalog({ package: 'agenda', sources: sources.slice(0, 1) }),
     /caller\.type:2: unknown resource agenda::read/);
 });
+
+test('validates known remote arguments and return signatures during catalog compilation', () => {
+  const external = language.compileCatalog({
+    package: 'identity',
+    sources: [{ filename: 'get.type', source: 'query get = (id: number, label: string = ""): number -> id' }],
+  });
+  const compile = source => language.compileCatalog({
+    package: 'agenda',
+    sources: [{ filename: 'caller.type', source }],
+    externalCatalogs: [external],
+  });
+  assert.equal(compile('query caller = (): number ->\n  await identity.query.get 12').calls[0].target,
+    'identity::query:get');
+  assert.throws(() => compile('query caller = (): number ->\n  await identity.query.get "12"'),
+    /caller\.type:2: .*argument id expects number/);
+  assert.throws(() => compile('query caller = (): number ->\n  await identity.query.get 12, "a", "b"'),
+    /too many arguments/);
+  assert.throws(() => compile('query caller = (): string ->\n  return await identity.query.get 12'),
+    /caller\.type:2: return of caller expects string/);
+  assert.throws(() => compile('query caller = (): number[] ->\n  return [12, "x"]'),
+    /caller\.type:2: return of caller expects number\[\]/);
+  assert.throws(() => compile('query caller = (): number ->\n  "x"'),
+    /caller\.type:2: return of caller expects number/);
+  assert.doesNotThrow(() => compile('query caller = (): string ->\n  helper = ->\n    return 3\n  "ok"'));
+  assert.throws(() => compile('query caller = (): number ->\n  await identity.query.missing 12'),
+    /unknown resource identity::query:missing/);
+  assert.throws(() => language.compileCatalog({
+    package: 'agenda', sources: [], externalCatalogs: [{ ...external, version: external.version + 1 }],
+  }), /incompatible resource catalog for identity/);
+});
+
+test('checks dynamic arguments before dispatch and validates the returned value', async () => {
+  const catalog = language.compileCatalog({
+    package: 'identity',
+    sources: [{ filename: 'get.type', source: 'query get = (id: User.ID): number -> id' }],
+  });
+  let invocations = 0;
+  const $ = language.createCapabilityHost({
+    package: 'agenda',
+    catalogForPackage: name => name === 'identity' ? catalog : undefined,
+    matchesType: (name, value) => name === 'User.ID' && Number.isInteger(value),
+    dispatch: async ({ args: [id] }) => {
+      invocations++;
+      return { found: true, value: id === 0 ? 'bad return' : id };
+    },
+  });
+  const dynamicName = 'identity::query:get';
+  await assert.rejects(() => $(dynamicName, '12'), {
+    code: 'LOGOS_CONTRACT_MISMATCH', message: /argument id expects User.ID/,
+  });
+  await assert.rejects(() => $('missing::query:get', 12), {
+    code: 'LOGOS_CONTRACT_MISMATCH', message: /missing or incompatible resource catalog/,
+  });
+  assert.equal(invocations, 0);
+  assert.equal(await $(dynamicName, 12), 12);
+  await assert.rejects(() => $(dynamicName, 0), {
+    code: 'LOGOS_CONTRACT_MISMATCH', message: /return expects number/,
+  });
+  assert.equal(invocations, 2);
+});
