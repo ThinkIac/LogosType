@@ -126,6 +126,30 @@ browser existentes continuam sendo os do CoffeeScript.
 - `void` descarta o retorno implícito do CoffeeScript, inclusive quando for Promise.
 - Este PR não implementa `on`, `before`, `after` nem notificações automáticas de chamadas.
 
+## Catálogo de recursos
+
+`compileCatalog` recebe as fontes de um pacote e devolve um catálogo versionado.
+Cada recurso inclui a identidade canônica, a assinatura e o arquivo e linha da
+declaração. As chamadas registram a posição de uso e, quando resolvidas no próprio
+pacote, incluem a identidade do alvo. A lista `dependencies` reúne os pacotes
+externos referenciados.
+
+```js
+const { compileCatalog } = require('logostype');
+
+const catalog = compileCatalog({
+  package: 'agenda',
+  sources: [
+    { filename: 'read.type', source: 'query read = (id: number): number -> id' },
+  ],
+});
+
+const completions = catalog.resources.map(({ identity, origin }) => ({
+  label: identity,
+  definition: origin,
+}));
+```
+
 ## Desenvolvimento
 
 ```bash

@@ -74,3 +74,38 @@ test('capabilities preserve function parameters and canonical package names', as
  const $ = language.createCapabilityHost({package:'agent-runtime', dispatch: async event => ({found:true, value:event.capability})});
  assert.equal(await $('agent-runtime::answer', 'x'), 'agent-runtime::answer');
 });
+
+test('indexes resource signatures, call sites and origins across source files', () => {
+  const catalog = language.compileCatalog({
+    package: 'agenda',
+    sources: [
+      { filename: 'read.type', source: 'query read = (id: number): string ->\n  await identity.user.get id' },
+      { filename: 'write.type', source: 'action write = (): void ->\n  null' },
+    ],
+  });
+  assert.equal(catalog.version, language.RESOURCE_CATALOG_VERSION);
+  assert.deepEqual(catalog.resources.map(resource => resource.identity), ['agenda::query:read', 'agenda::action:write']);
+  assert.equal(catalog.resources[0].params[0].type, 'number');
+  assert.equal(catalog.resources[0].returns, 'string');
+  assert.deepEqual(catalog.resources[0].origin, { filename: 'read.type', line: 1 });
+  assert.deepEqual(catalog.calls, [{ capability: 'identity::user:get', origin: { filename: 'read.type', line: 2 } }]);
+});
+
+test('reports both origins when a canonical resource is duplicated', () => {
+  const source = 'query read = (): number -> 1';
+  assert.throws(() => language.compileCatalog({
+    package: 'agenda',
+    sources: [{ filename: 'one.type', source }, { filename: 'two.type', source }],
+  }), /two\.type:1: duplicate resource agenda::query:read.*one\.type:1/);
+});
+
+test('links local resource calls across files and diagnoses missing resources', () => {
+  const sources = [
+    { filename: 'caller.type', source: 'query caller = (id: number): number ->\n  await read id' },
+    { filename: 'callee.type', source: 'query read = (id: number): number -> id' },
+  ];
+  const catalog = language.compileCatalog({ package: 'agenda', sources });
+  assert.equal(catalog.calls[0].target, 'agenda::query:read');
+  assert.throws(() => language.compileCatalog({ package: 'agenda', sources: sources.slice(0, 1) }),
+    /caller\.type:2: unknown resource agenda::read/);
+});
