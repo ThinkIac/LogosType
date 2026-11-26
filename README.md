@@ -126,6 +126,59 @@ browser existentes continuam sendo os do CoffeeScript.
 - `void` descarta o retorno implícito do CoffeeScript, inclusive quando for Promise.
 - Este PR não implementa `on`, `before`, `after` nem notificações automáticas de chamadas.
 
+## Catálogo de recursos
+
+`compileCatalog` recebe as fontes de um pacote e devolve um catálogo versionado.
+Cada recurso inclui a identidade canônica, a assinatura e o arquivo e linha da
+declaração. As chamadas registram a posição de uso e incluem a identidade do alvo
+quando resolvidas no próprio pacote ou em um catálogo fornecido em
+`externalCatalogs`. A lista `dependencies` reúne os pacotes externos referenciados
+mesmo quando o catálogo deles ainda está indisponível.
+
+O compilador verifica a quantidade de argumentos e incompatibilidades que
+consegue demonstrar com literais nas chamadas de capacidade resolvidas. Também
+verifica retornos literais e retornos diretos de chamadas de capacidade com
+assinatura conhecida. Expressões de tipo desconhecido ficam para a execução.
+
+```js
+const { compileCatalog } = require('logostype');
+
+const catalog = compileCatalog({
+  package: 'agenda',
+  sources: [
+    { filename: 'read.type', source: 'query read = (id: number): number -> id' },
+  ],
+});
+
+const completions = catalog.resources.map(({ identity, origin }) => ({
+  label: identity,
+  definition: origin,
+}));
+```
+
+Para validar capacidades em execução, configure o host com um resolvedor de
+catálogos. Ele verifica os argumentos antes de despachar e o retorno quando a
+chamada termina. A versão do catálogo deve corresponder a
+`RESOURCE_CATALOG_VERSION`. O host fornece `matchesType` para tipos de domínio,
+como `User.ID`, e deve disponibilizar apenas catálogos da geração ativa
+visíveis para o chamador. A autorização do despacho continua a cargo do host.
+
+```js
+const { createCapabilityHost } = require('logostype');
+
+const $ = createCapabilityHost({
+  package: 'agenda',
+  dispatch,
+  catalogForPackage: name => activeCatalogs.get(name),
+  matchesType: (name, value) => name === 'User.ID' && Number.isInteger(value),
+});
+```
+
+Com essa configuração, uma referência dinâmica é resolvida pelo catálogo em
+execução. Catálogos ausentes ou incompatíveis, referências ambíguas e violações
+de assinatura produzem `LOGOS_CONTRACT_MISMATCH`. O catálogo cobre as
+declarações tipadas das fontes fornecidas a `compileCatalog`.
+
 ## Desenvolvimento
 
 ```bash
