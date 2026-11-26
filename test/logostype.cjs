@@ -46,3 +46,31 @@ test('union signatures and async void exports retain their contracts', async () 
 test('directives after literal statements are rejected', () => {
  assert.throws(()=>run('sample x = (): string ->\n  "value"\n  @description "late"\n'),/directives must precede/);
 });
+test('capability lowering resolves local calls before remote events', async () => {
+ const source = 'local = (id) -> "local:" + id\n\nmodule.exports.result = ->\n  a = await local 12\n  b = await getCustomPrompt "hello"\n  c = await identity.user.get 12\n  [a, b, c]\n';
+ const compiled = language.compileResource(source, {filename:'/tmp/capabilities.type', capabilities:{package:'agent'}});
+ assert.deepEqual(compiled.capabilities.map(call => call.name), ['agent::getCustomPrompt', 'identity::user:get']);
+ const events = [];
+ const $ = language.createCapabilityHost({package:'agent', dispatch: async event => {
+   events.push(event); if (event.capability === 'agent::getCustomPrompt') return {found:true, value:'remote:hello'};
+   if (event.capability === 'identity::user:get') return {found:true, value:{id:event.args[0]}};
+   return {found:false};
+ }});
+ const module = {exports:{}};
+ vm.runInNewContext(compiled.js, {module, exports:module.exports, $});
+ assert.deepEqual(JSON.parse(JSON.stringify(await module.exports.result())), ['local:12','remote:hello',{id:12}]);
+ assert.equal(events[0].caller, 'agent');
+ assert.equal(events[0].protocol, language.CAPABILITY_PROTOCOL);
+});
+test('capability host makes missing remote events explicit', async () => {
+ const $ = language.createCapabilityHost({package:'agent', dispatch: async () => ({found:false})});
+ await assert.rejects(() => $('not a capability'), {code:'LOGOS_INVALID_CAPABILITY'});
+ await assert.rejects(() => $('agent::tool:missing'), {code:'LOGOS_CAPABILITY_NOT_FOUND'});
+});
+test('capabilities preserve function parameters and canonical package names', async () => {
+ const source = 'run = (getCustomPrompt) ->\n  getCustomPrompt "local"\n\nanswer = await getStatus "remote"\n';
+ const compiled = language.compileResource(source, {capabilities:{package:'agent-runtime'}});
+ assert.deepEqual(compiled.capabilities.map(call => call.name), ['agent-runtime::getStatus']);
+ const $ = language.createCapabilityHost({package:'agent-runtime', dispatch: async event => ({found:true, value:event.capability})});
+ assert.equal(await $('agent-runtime::answer', 'x'), 'agent-runtime::answer');
+});

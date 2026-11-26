@@ -96,6 +96,13 @@ const result = compileResource(source, { filename: '/packages/demo/index.type' }
 // result.declarations: kind, name, params, returns e linha original
 ```
 
+## Capacidades sem import
+
+O protocolo opcional [`logos-capabilities/v1`](docs/logos-capabilities-v1.md)
+permite ao host fornecer eventos sem acoplar o compilador ao Runtime. A sintaxe
+autoral é CoffeeScript comum, como `await identity.user.get 12`; `$` é apenas a
+ponte interna do host.
+
 Fluxo: fonte `.type` → assinatura e diretivas → CoffeeScript → JavaScript + declarações
 → host descobre provedores → valida contratos e tipos → prepara → publica.
 
