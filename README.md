@@ -77,14 +77,37 @@ tool updateName = (ID: User.ID, newName: User.name): User ->
 ```
 
 `prepararFerramenta` é uma função fornecida pelo pacote do provedor. O compilador
-não publica ferramentas por conta própria. No host Lógos, `User.ID` resolve para
-`Int` e herda a descrição do campo. `@param nome - descrição` substitui a descrição
-apenas naquela operação. `.schema` e `.scriba` usam o mesmo formato; `.prisma`
-continua aceito pelo host por compatibilidade. Não é necessário declarar `type`
-no schema. O suporte é ao formato Scriba, sem prometer toda a gramática Prisma.
+não publica ferramentas por conta própria. O exemplo usa `User.ID` para
+referir-se ao campo `ID` do modelo `User`, declarado como `Int`. A validação
+dinâmica de tipos de domínio usa o callback `matchesType` fornecido pelo host.
 
-Usar modelos como tipos não abre banco. `User[ID]` depende do módulo de persistência
-e mantém a autorização e o escopo do pacote. O compilador sozinho não fornece ORM.
+| Componente | `.schema` | `.scriba` | `.prisma` |
+| --- | --- | --- | --- |
+| LogosType | Texto fornecido ao compilador | Texto fornecido ao compilador | Texto fornecido ao compilador |
+| Compositor do Lógos | Fora da descoberta | Fragmento descoberto | Fonte principal ou fragmento descoberto |
+| Parser do Scriba | Sem descoberta por extensão | Sem descoberta por extensão | Lê o conteúdo do caminho fornecido pelo host, normalmente o schema composto |
+
+O compositor dá prioridade a `schema.prisma` na raiz sobre campos
+conflitantes de fragmentos. Para manter essa precedência, passe o resultado de
+`composePackageSchema` ao compilador como
+`schemas: [{ filename: composed.outputPath, source: composed.schema }]`.
+A descoberta automática de `.schema` pelo Lógos continua proposta. As três
+extensões usam a mesma sintaxe de declarações compatível com Prisma no
+LogosType. O Scriba interpreta o subconjunto aceito pelo seu parser.
+
+`createSchemaCatalog([{ filename, source }])` retorna metadados versionados
+de modelos, campos, cardinalidade, descrições `///` presentes no texto e chaves
+primárias e únicas, inclusive compostas. Fontes diretas com modelos repetidos
+geram diagnóstico de conflito. O compositor deve receber primeiro os fragmentos
+que precisam ser mesclados.
+
+`compileCatalog` aceita a mesma lista opcional em `schemas`. Assim,
+`User.ID` resolve o campo `ID` de `User`. O catálogo preserva a anotação
+original e publica o tipo resolvido para validar argumentos e retornos. Escalares
+como `Int` usam os tipos JavaScript existentes no compilador (`number` para
+`Int`), e tipos de domínio sem mapeamento continuam a cargo de `matchesType`.
+A resolução recebe apenas texto e opera sem conexão com banco. O acesso a
+registros com `User[ID]` depende da persistência e da autorização do host.
 
 ## API do compilador
 

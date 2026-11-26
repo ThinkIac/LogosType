@@ -169,3 +169,59 @@ test('checks dynamic arguments before dispatch and validates the returned value'
   });
   assert.equal(invocations, 2);
 });
+
+test('schema catalogs describe models, fields and compound keys across supported extensions', () => {
+  const catalog = language.createSchemaCatalog([
+    { filename: 'base.prisma', source: '/// Account owner\nmodel User {\n/// Stable identifier\nID Int @id\nemail String @unique\n}' },
+    { filename: 'audit.scriba', source: 'model Audit { user Int seq Int @@id([user, seq(sort: Desc)], name: "audit_key") }' },
+    { filename: 'extra.schema', source: 'model Extra { tags String[] nickname String? note String @default("} // @id") }' },
+  ]);
+  assert.equal(catalog.version, language.SCHEMA_CATALOG_VERSION);
+  const [user, audit, extra] = catalog.models;
+  assert.equal(user.description, 'Account owner');
+  assert.equal(user.fields[0].description, 'Stable identifier');
+  assert.deepEqual(user.keys, [{ kind: 'id', fields: ['ID'] }, { kind: 'unique', fields: ['email'] }]);
+  assert.deepEqual(audit.keys, [{ kind: 'id', fields: ['user', 'seq'] }]);
+  assert.equal(extra.fields[0].list, true);
+  assert.equal(extra.fields[1].nullable, true);
+});
+
+test('schema-derived signatures participate in cross-package compilation and runtime checks', async () => {
+  const schemas = [{ filename: 'schema.prisma', source: 'model User { ID Int @id nickname String? }' }];
+  const catalog = language.compileCatalog({
+    package: 'identity', schemas,
+    sources: [{ filename: 'user.type', source: 'tool get = (id: User.ID): User.ID -> id' }],
+  });
+  assert.equal(catalog.resources[0].params[0].resolvedType, 'number');
+  assert.equal(catalog.resources[0].resolvedReturn, 'number');
+  const compileCaller = call => language.compileCatalog({
+    package: 'caller', externalCatalogs: [catalog],
+    sources: [{ filename: 'caller.type', source: `tool read = (): number ->\n  await identity.tool.get ${call}` }],
+  });
+  assert.doesNotThrow(() => compileCaller('12'));
+  assert.throws(() => compileCaller('"12"'), /argument id expects User.ID/);
+  assert.throws(() => language.compileCatalog({
+    package: 'identity', schemas,
+    sources: [{ filename: 'user.type', source: 'tool get = (): User.ID -> "12"' }],
+  }), /return of get expects User.ID/);
+  const host = language.createCapabilityHost({
+    package: 'caller', catalogForPackage: () => catalog,
+    dispatch: ({ args }) => ({ found: true, value: args[0] }),
+  });
+  assert.equal(await host('identity::tool:get', 12), 12);
+  await assert.rejects(host('identity::tool:get', '12'), { code: 'LOGOS_CONTRACT_MISMATCH' });
+});
+
+test('schema diagnostics identify unsupported files, conflicts and missing references', () => {
+  const schemas = [{ filename: 'base.prisma', source: 'model User { ID Int @id }' }];
+  assert.throws(() => language.createSchemaCatalog([{ ...schemas[0], filename: 'base.sql' }]),
+    { code: 'LOGOS_SCHEMA_UNSUPPORTED' });
+  assert.throws(() => language.createSchemaCatalog([...schemas, { ...schemas[0], filename: 'extra.scriba' }]),
+    { code: 'LOGOS_SCHEMA_CONFLICT', message: /extra.scriba.*User.*base.prisma/ });
+  const compile = type => language.compileCatalog({
+    package: 'identity', schemas,
+    sources: [{ filename: 'user.type', source: `tool get = (id: ${type}): void -> id` }],
+  });
+  assert.throws(() => compile('Missing.ID'), { code: 'LOGOS_SCHEMA_MODEL_NOT_FOUND', message: /user.type:1.*Missing/ });
+  assert.throws(() => compile('User.missing'), { code: 'LOGOS_SCHEMA_FIELD_NOT_FOUND' });
+});
