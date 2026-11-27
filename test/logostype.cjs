@@ -287,3 +287,26 @@ test('binds named local and external capability arguments by their declared orde
   await assert.rejects(() => $.named('identity::query:get', { id: 12 }, {}), /expected one named argument object/);
   assert.equal(events.length, 1);
 });
+
+test('extension hooks infer local and external named fields and nullable results', () => {
+ const response = {filename:'prompt.type', source:'response compose = (message: string, style: string = "plain"): string? -> message'};
+ const external = language.compileCatalog({package:'agent', sources:[response]});
+ const hook = {filename:'hook.type', source:'extensionHook preview = before agent::response:compose ({message, style}, context) -> context.flowId\nextensionHook customize = transform agent::response:compose ({result}) -> null'};
+ for (const catalog of [
+  language.compileCatalog({package:'agent', sources:[response, hook]}),
+  language.compileCatalog({package:'plugin', sources:[hook], externalCatalogs:[external]}),
+ ]) {
+  assert.deepEqual(catalog.hooks[0].params.map(field => [field.name, field.type, field.default]), [
+   ['message', 'string', undefined], ['style', 'string', '"plain"'],
+  ]);
+  assert.equal(catalog.hooks[1].params[0].type, 'string?');
+ }
+ assert.throws(() => language.compileCatalog({package:'agent', sources:[response, {
+  ...hook, source:hook.source.replace('message, style', 'typo'),
+ }]}), /hook\.type:1: unknown hook field typo/);
+ assert.throws(() => language.compileCatalog({package:'agent', sources:[response, {
+  ...hook, source:hook.source.replace('-> null','-> 12'),
+ }]}), /hook\.type:2: return of customize expects string\?/);
+ const compiled = run(hook.source);
+ assert.equal(compiled.exports.preview({message:'hello', flowId:'forged'}, {flowId:'host'}), 'host');
+});
