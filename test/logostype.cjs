@@ -246,3 +246,44 @@ exports.later = ->
   assert.throws(() => language.compileResource('f = -> await User[42]', { primaryKeyModels: models }),
     { code: 'SCRIBA_INVALID_KEY' });
 });
+
+test('binds named local and external capability arguments by their declared order', async () => {
+  const identity = language.compileCatalog({
+    package: 'identity',
+    sources: [{ filename: 'target.type', source: 'query get = (id: number, label: string = ""): number? -> id' }],
+  });
+  const compile = (expression, returns = 'number?') => language.compileCatalog({
+    package: 'agenda',
+    externalCatalogs: [identity],
+    sources: [
+      { filename: 'local.type', source: 'query get = (id: number): number -> id' },
+      { filename: 'caller.type', source: `query read = (): ${returns} ->\n  await ${expression}` },
+    ],
+  });
+  assert.equal(compile('get named {id: 12}').calls[0].target, 'agenda::query:get');
+  assert.throws(() => compile('identity.query.get named {label: "x"}'), /caller\.type:2: .*missing argument id/);
+  assert.throws(() => compile('identity.query.get named {id: "12"}'), /caller\.type:2: .*argument id expects number/);
+  assert.throws(() => compile('identity.query.get named {id: 12, typo: true}'), /caller\.type:2: .*unknown argument typo/);
+  assert.throws(() => compile('identity.query.get named {id: 12}', 'number'), /return of read expects number/);
+
+  const events = [];
+  const $ = language.createCapabilityHost({
+    package: 'agenda',
+    catalogForPackage: () => identity,
+    dispatch: async event => {
+      events.push(event);
+      return { found: true, value: null };
+    },
+  });
+  const compiled = language.compileResource('read = ->\n  await identity.query.get named {label: "x", id: 12}\nmodule.exports = read', {
+    capabilities: { package: 'agenda' },
+  });
+  const module = { exports: {} };
+  new Function('$', 'module', compiled.js)($, module);
+  assert.equal(await module.exports(), null);
+  assert.deepEqual(events[0].args, [12, 'x']);
+  assert.equal(events[0].caller, 'agenda');
+  await assert.rejects(() => $.named('identity::query:get', { id: 12, caller: 'admin' }), /unknown argument caller/);
+  await assert.rejects(() => $.named('identity::query:get', { id: 12 }, {}), /expected one named argument object/);
+  assert.equal(events.length, 1);
+});
