@@ -211,3 +211,23 @@ npm test
 
 O compilador CoffeeScript original, seus autores e sua licença MIT são preservados.
 Veja [COFFEESCRIPT.md](COFFEESCRIPT.md) e [LICENSE](LICENSE).
+
+### Named capability arguments
+
+Use `named { ... }` to select arguments by the target signature rather than by
+position.
+
+```coffee
+result = await identity.query.get named {id: 12, label: "owner"}
+```
+
+The capability host resolves the active target catalog and orders fields by the
+target's declaration. A missing field with a declared default is passed as
+`undefined`, allowing the provider to apply its default. Explicitly nullable
+returns can include `null` or `undefined`. The catalog checks known fields and
+literal types at the call's source location. Dynamic values require runtime
+validation before dispatch.
+
+The named object contains functional arguments only. The capability host
+supplies the caller independently. The dispatcher owns authorization,
+cancellation and tracing.
