@@ -38,3 +38,36 @@ host. Para conceder uma biblioteca JavaScript, o host deve listar sua raiz em
 
 `package::resource:action` é formato de transporte. `::` não é sintaxe autoral,
 pois é reservado pelo CoffeeScript para `prototype`.
+
+## Response extension hooks
+
+A typed response declares which phases it opens. A hook names its canonical
+target and destructures only the fields it uses.
+
+```coffee
+response compose = (message: string, suffix: string = "!"): string? ->
+  @extensions before
+  @extensions transform
+  @extensions after
+  message + suffix
+
+extensionHook audit = before agent::response:compose ({message, suffix}, context) ->
+  # suffix can be undefined before the provider applies its default.
+  context.signal.throwIfAborted()
+
+extensionHook customize = transform agent::response:compose ({result}) ->
+  if result? then result.toUpperCase() else undefined
+```
+
+The catalog checks the selected names against the target's signature when
+the target catalog is available. Before receives named inputs, transform and
+after receive the single named field `result`, with the target's return type.
+The catalog checks inferable transform returns against that type, including
+nullable returns. A transform may return `undefined` to keep the result.
+
+The optional second binding receives host context, independently of input
+fields. The host supplies the abort signal, event and flow ID and resolves
+identity and authority from execution context. When target contracts or
+expression types are unavailable to the compiler, the host remains responsible
+for checking runtime values, deciding whether delivery is authorized, and
+validating every replacement.
